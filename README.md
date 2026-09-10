@@ -1,4 +1,4 @@
-# Analyse de l’expression differentielle de genes a partir de donnees RNA- Seq (M2, année 2025-2026)
+# Analyse de l’expression differentielle de genes a partir de donnees RNA- Seq (M2, année 2026-2027)
 
-Site du cours: https://scortijo.github.io/2025_M2_RNAseq/
+Site du cours: https://scortijo.github.io/2026_M2_RNAseq/
 
