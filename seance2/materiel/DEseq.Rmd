@@ -1,0 +1,281 @@
+---
+title: "Analyse d'expression différentielle"
+author: "Sandra"
+date: "2024-08-05"
+output: rmdformats::downcute
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+<br>
+<br>
+
+Dans cette séance vous allez effectuer une détection de gènes différentiellement exprimés. Pour cela vous allez utiliser le package `DESeq2`. Voici le [lien vers la notice complete de DESeq2](https://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html). Nous n'allons utiliser qu'une partie des fonctionnalités de DESeq2, et je vous recommande de regarder les autres possibilités offertes par ce package spécialisé dans l'analyse de données RNAseq.
+
+
+# Préparation de l'environnement
+
+- Dans un premier temps, créez un nouveau R markdown (ou réutilisez celui de la séance précédente) et chargez les librairies dont vous aurez besoin.  
+
+Voici la liste des libraries dont vous aurez besoin:  
+- tidyverse  
+- DESeq2
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(DESeq2)
+```
+
+<br>
+
+**Avec `DESeq2` nous detectons les gènes différentiellement exprimés entre 2 conditions. Nous allons donc devoir faire l'analyse pour chacune des comparaisons suivantes:**   
+**- `WT` vs `arp6-1` en faible concentration (0.5 mM) de nitrate**   
+**- `WT` vs `arp6-1` en forte concentration (10 mM) de nitrate**   
+**- `Faible concentration` (0.5 mM) vs `forte concentration` (10 mM) de nitrate chez le WT**   
+**- `Faible concentration` (0.5 mM) vs `forte concentration` (10 mM) de nitrate chez le mutant arp6-1**   
+
+
+
+# Détection de gènes différentiellement exprimés entre WT et le mutant arp6-1 en faible concentration (0.5 mM) de nitrate
+
+Nous allons faire ensemble la détection de gènes différentiellement exprimés entre WT et le mutant *arp6-1* en faible concentration (0.5 mM) de nitrate et vous ferez l'analyse pour les autres comparaisons par vous-même.
+
+## Préparation des données pour pouvoir faire l'analyse d'expression différentielle
+
+DESeq à besoin d'un object dans un format particulier pour fonctionner. Celui-ci contient les données d'expression ainsi que les informations sur les échantillons nécessaires à la comparaison.  
+Afin de créer cet objet il faut les informations suivantes:   
+- Le dossier dans lequel il y a les données d'expression (avec un fichier d'expression par échantillon)     
+- Le fichier contenant les informations des échantillons (génotype, condition environnementale)   
+
+
+- Nous créons cet objet avec le code suivant:
+```{r, message=FALSE, results='hide'}
+
+# Définition du dossier contenant les données d'expression pour tous 
+# les échantillons de la comparaison analysée 
+
+directory_0.5mM <- "../../../data/0.5mM_WT_vs_arp6/"
+sampleFiles_0.5mM <- list.files(directory_0.5mM)
+
+# Chargement du fichier contenant les information sur les échantillons
+sampleCondition_0.5mM <- read_tsv("../../../data/Data_info_WT_arp6_0.5mM.txt")
+
+# Création d'un objet combinant le nom des fichiers des échantillons et 
+# les informations sur ces échantillons
+sampleTable_0.5mM <- data.frame(sampleName = sampleFiles_0.5mM,
+                          fileName = sampleFiles_0.5mM,
+                          condition = sampleCondition_0.5mM)
+sampleTable_0.5mM$condition <- factor(sampleTable_0.5mM$condition.genotype)
+
+# Vérifiez que tout est bon à cette étape avec la commande:
+View(sampleTable_0.5mM)
+
+
+# Création de l'objet spécifique à DESeq:
+ddsHTSeq_0.5mM <- DESeqDataSetFromHTSeqCount(sampleTable = sampleTable_0.5mM,
+                                       directory = directory_0.5mM,
+                                       design= ~ condition)
+ddsHTSeq_0.5mM
+
+```
+
+<br>
+
+- Nous devons ensuite enlever les gènes non exprimés ou très faiblement exprimés: 
+```{r}
+keep <- rowSums(counts(ddsHTSeq_0.5mM)) >= 6
+ddsHTSeq_0.5mM <- ddsHTSeq_0.5mM[keep,]
+```
+
+
+
+- DESeq doit savoir quelle est la condition de référence, et quelle est la condition que nous comparons à cette référence. Ceci se fait avec la fonction suivante: 
+```{r}
+
+ddsHTSeq_0.5mM$condition <- relevel(ddsHTSeq_0.5mM$condition, ref = "WT")
+
+```
+
+
+## Analyse d'expression différentielle
+
+Maintenant que tout est préparé, nous pouvons enfin effectuer l'analyse d'expression différentielle. Cette analyse intègre une normalisation des données pour corriger pour la taille de la librarie (raison pour laquelle nous n'avons pas besoin de le faire comme à la séance précédente).  
+Ensuite DESeq va effectuer un test statistique afin de définir si chaque gène est différentiellement exprimé. Ce test est fait en partant du principe que la majorité des gènes ne changent pas d'expression entre les deux conditions. Il va attribuer une p-value ajustée (en utilisant la méthode de benjamini-hochberg) pour tenir compte du fait qu'un nombre important de tests statistiques sont effectués (un test par gène sachant qu'il y a environ 20000 gènes). 
+
+
+- L'analyse d'expression différentielle, ainsi que la normalisation de l'expression des gènes (pour corriger les différences de tailles de librairies), sont effectués avec la fonction suivante:
+```{r, message=FALSE}
+dds_0.5mM <- DESeq(ddsHTSeq_0.5mM)
+
+```
+
+
+- Maintenant nous pouvons ajouter un seuil pour la p-value ajustée à 5%. Les gènes avec une p-value ajustée inférieure à cette valeur sont différentiellement exprimés. 
+```{r}
+res_0.5mM <- results(dds_0.5mM, alpha=0.05)
+res_0.5mM
+```
+
+
+- Afin de connaitre le nombre de gènes différentiellement exprimés pour cette comparaison nous faisons:
+```{r}
+sum(res_0.5mM$padj < 0.05, na.rm=TRUE)
+```
+
+- Pour visualiser l'analyse d'expression différentielle nous utilisons un graphique MA:
+```{r}
+plotMA(res_0.5mM, ylim=c(-2,2))
+```
+
+
+
+Ce graphique représente la différence d'expression entre les deux conditions en fonction de l'expression moyenne pour chaque gène. Les gènes différentiellement exprimés sont en bleu.
+
+> Que pensez-vous de ce graphique?  
+> Est-ce que la détection de gènes différentiellement exprimés est la même 
+peut importe le niveau d'expression?  
+
+
+
+- Nous allons maintenant récupérer le résultat de DESeq dans un objet de format data.frame, qui nous permettra de faire des analyses sur ces gènes:
+```{r}
+resOrdered_0.5mM <- res_0.5mM[order(res_0.5mM$padj),]
+resOrdered_0.5mM
+
+DESeq_result_0.5mM <- as.data.frame(resOrdered_0.5mM) %>% 
+  rownames_to_column(var="gene")
+```
+
+- Regardez le tableau avec les données d'analyse d'expression différentielle avec la fonction suivante. 
+```{r}
+View(DESeq_result_0.5mM)
+```
+
+> Est-ce que le gène *ARP6* est bien différentiellement exprimé?
+
+- Finalement, exportez le résultat afin de le conserver sans avoir à refaire toute l'analyse:
+```{r, eval=FALSE}
+write_tsv(DESeq_result_0.5mM, file="../DEseq_0.5mM_WT_vs_arp6.txt")
+```
+
+```{r, echo=FALSE}
+write_tsv(DESeq_result_0.5mM, file="../../../data/tables_DEG/DEseq_0.5mM_WT_vs_arp6.txt")
+```
+
+
+# Détection de gènes différentiellement exprimés pour les 3 autres comparaisons
+
+> Recopiez le code ci-dessus pour détecter les gènes différentiellement exprimés pour 
+les 3 autres comparaisons suivantes:   
+- WT vs arp6-1 en forte concentration (10 mM) de nitrate   
+- Faible concentration (0.5 mM) vs forte concentration (10 mM) de nitrate chez le WT   
+- Faible concentration (0.5 mM) vs forte concentration (10 mM) de nitrate chez le mutant arp6-1   
+
+
+**Attention! N'oubliez pas de nommer les objets différemment pour chaque comparaison afin de ne pas écraser les résultats de l'analyse précédente.**
+
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# WT vs arp6-1 en forte concentration (10 mM) de nitrate   
+
+directory_10mM <- "../../../data/10mM_WT_vs_arp6/"
+sampleFiles_10mM <- list.files(directory_10mM)
+
+sampleCondition_10mM <- read_tsv("../../../data/Data_info_WT_arp6_10mM.txt")
+
+sampleTable_10mM <- data.frame(sampleName = sampleFiles_10mM,
+                          fileName = sampleFiles_10mM,
+                          condition = sampleCondition_10mM)
+sampleTable_10mM$condition <- factor(sampleTable_10mM$condition.genotype)
+
+ddsHTSeq_10mM <- DESeqDataSetFromHTSeqCount(sampleTable = sampleTable_10mM,
+                                       directory = directory_10mM,
+                                       design= ~ condition)
+
+
+ddsHTSeq_10mM$condition <- relevel(ddsHTSeq_10mM$condition, ref = "WT")
+
+dds_10mM <- DESeq(ddsHTSeq_10mM)
+
+res_10mM <- results(dds_10mM, alpha=0.05)
+resOrdered_10mM <- res_10mM[order(res_10mM$padj),]
+
+DESeq_result_10mM <- as.data.frame(resOrdered_10mM) %>% 
+  rownames_to_column(var="gene")
+write_tsv(DESeq_result_10mM, file="../../../data/tables_DEG/DEseq_10mM_WT_vs_arp6.txt")
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# 0.5mM vs 10mM in WT   
+
+directory_WT <- "../../../data/Col0_0.5mM_vs_10mM/"
+sampleFiles_WT <- list.files(directory_WT)
+
+sampleCondition_WT <- read_tsv("../../../data/Data_info_0.5mM_10mM_WT.txt")
+
+sampleTable_WT <- data.frame(sampleName = sampleFiles_WT,
+                          fileName = sampleFiles_WT,
+                          condition = sampleCondition_WT)
+sampleTable_WT$condition <- factor(sampleTable_WT$condition.KNO3)
+
+ddsHTSeq_WT <- DESeqDataSetFromHTSeqCount(sampleTable = sampleTable_WT,
+                                       directory = directory_WT,
+                                       design= ~ condition)
+
+
+ddsHTSeq_WT$condition <- relevel(ddsHTSeq_WT$condition, ref = "0.5mM")
+
+dds_WT <- DESeq(ddsHTSeq_WT)
+
+res_WT <- results(dds_WT, alpha=0.05)
+resOrdered_WT <- res_WT[order(res_WT$padj),]
+
+DESeq_result_WT <- as.data.frame(resOrdered_WT) %>% 
+  rownames_to_column(var="gene")
+write_tsv(DESeq_result_WT, file="../../../data/tables_DEG/DEseq_WT_0.5mM_vs_10mM.txt")
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# 0.5mM vs 10mM in arp6   
+
+directory_arp6 <- "../../../data/arp6_0.5mM_vs_10mM//"
+sampleFiles_arp6 <- list.files(directory_arp6)
+
+sampleCondition_arp6 <- read_tsv("../../../data/Data_info_0.5mM_10mM_arp6.txt")
+
+sampleTable_arp6 <- data.frame(sampleName = sampleFiles_arp6,
+                          fileName = sampleFiles_arp6,
+                          condition = sampleCondition_arp6)
+sampleTable_arp6$condition <- factor(sampleTable_arp6$condition.KNO3)
+
+ddsHTSeq_arp6 <- DESeqDataSetFromHTSeqCount(sampleTable = sampleTable_arp6,
+                                       directory = directory_arp6,
+                                       design= ~ condition)
+
+
+ddsHTSeq_arp6$condition <- relevel(ddsHTSeq_arp6$condition, ref = "0.5mM")
+
+dds_arp6 <- DESeq(ddsHTSeq_arp6)
+
+res_arp6 <- results(dds_arp6, alpha=0.05)
+resOrdered_arp6 <- res_arp6[order(res_arp6$padj),]
+
+DESeq_result_arp6 <- as.data.frame(resOrdered_arp6) %>% 
+  rownames_to_column(var="gene")
+write_tsv(DESeq_result_arp6, file="../../../data/tables_DEG/DEseq_arp6_0.5mM_vs_10mM.txt")
+
+```
+

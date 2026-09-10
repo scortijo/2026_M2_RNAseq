@@ -1,0 +1,235 @@
+---
+layout: post
+title: "Normalisation et vérification des données"
+author: "Sandra"
+date: "2024-08-05"
+output: rmdformats::downcute
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Présentation des données de RNAseq
+
+
+Vous allez travailler sur des données non publiées (elles sont sur moodle et non disponibles sur ce site du cours), merci de ne pas les partager et ne pas les déposer en ligne.  
+
+Il s'agit de RNAseq qui ont été effectués pour un sauvage Col-0 et le mutant *arp6-1* qui ont poussé avec soit une faible (0.5mM) soit une forte (10mM) concentration en azote. Il y a donc au total:  
+- 3 réplicats du sauvage `Col-0` avec une `faible (0.5 mM) concentration en azote`  
+- 3 réplicats du sauvage `Col-0` avec une `forte (10 mM) concentration en azote`   
+- 3 réplicats du `mutant arp6-1` avec une `faible (0.5 mM) concentration en azote`  
+- 3 réplicats du `mutant arp6-1` avec une `forte (10 mM) concentration en azote`  
+
+La protéine ARP6 est impliquée dans l'intégration du variant d'histone H2A.Z dans la chromatine. Le mutant *arp6-1* comporte donc une faible quantité de H2A.Z dans la chromatine, remplacé par l'histone H2A.   
+
+<br>
+
+**L'objectif de ce projet est d'étudier le rôle possible de H2A.Z dans la réponse transcriptionnelle à la quantité d'azote dans le milieu de culture des plantes**
+
+<br>
+
+<span style="color:green">Une grosse partie du code est indiquée pour les premières étapes, mais plus le projet avance plus vous aurez à trouver le code par vous-même à l'aide des indications dans le matériel et de ce que vous trouvez dans les aides R et en ligne</span>
+
+# Préparation de l'environnement et chargement des données
+
+- Tout d'abord téléchargez le support du cours et les données.  
+
+- Ensuite ouvrez Rstudio et créez un nouveau document R Markdown (ou script R) que vous enregistrez dans votre dossier de travail (là où sont vos données et où vous voulez enregistrer les figures).    
+Attention, si vous utilisez un script R, il faudra indiquer le dossier de travail avec la fonction `setwd()`. Cette étape n'a pas besoin d'être effectuée si vous utilisez un R Markdown.  
+
+- Chargez les librairies dont vous aurez besoin en utilisant la fonction suivante (exemple pour une librairie).
+```{r}
+library(tidyverse)
+```
+Voici la liste des librairies à charger:  
+- tidyverse   
+- visdat   
+- scTenifoldNet   
+- factoextra   
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# toutes les libraries dont nous avons besoin pour cette partie du cours
+library(tidyverse)
+library(visdat)
+library(scTenifoldNet)
+library(factoextra)
+```
+
+- Enfin, chargez les données et mettez les dans un objet à l'aide du code suivant (modifiez en fonction du chemin vers votre fichier):
+```{r, message=FALSE}
+RNAseq_data <- read_tsv("../../../data/Raw_featureCounts_WT_arp6.txt")
+
+RNAseq_data
+```
+
+Vous avez une ligne par gène et une colonne par échantillon. Pour chaque gène dans chaque échantillon, nous avons une valeur d'expression. C'est le nombre 
+de reads qui ont été séquencé pour ce gène dans cet échantillon.
+
+
+# Vérification de l'import des données
+
+Avant de faire la normalisation des données et leur vérification, nous devons nous assurer que l'import c'est bien passé.
+
+> Pour cela, vérifiez que nous avons bien le nombre de lignes et colonnes attendu, 
+que les colonnes sont bien au bon format et qu'il n'y a pas de données manquantes.  
+
+> Exemple de fonctions que vous pouvez utiliser: `dim()`, `vis_dat`
+
+```{r, echo=FALSE}
+
+vis_dat(RNAseq_data)
+
+
+```
+Nous voyons ici que le format des données est attendu:  
+- Il n'y a pas de données manquantes.  
+- La colonne avec le nom des gènes est bien du texte.  
+- Les colonnes avec les valeurs d'expression sont bien numériques.  
+
+
+# Normalisation par la taille de la librarie
+
+Afin de pouvoir comparer les données dans les différens échantillons, il faut les normaliser pour corriger par la taille de la librarie. La taille de la librairie est le nombre total de reads séquencés pour chaque échantillon. Plus ce nombre total de reads est élevé pour un échantillon, plus la valeur d'expression des gènes est élevé. Il faut donc corriger ces différences entre échantillons.
+
+
+- Pour cela nous utilisons la fonction `cpmNormalization` de la librairie `scTenifoldNet`.
+
+- Cette fonction a besoin d'un tableau uniquement numérique. Nous modifions donc le tableau pour que la colonne des gènes devienne le nom des lignes avec la fonction suivante:
+```{r}
+RNAseq_data <- column_to_rownames(RNAseq_data, var="Geneid")
+
+```
+
+
+- Normalisation avec la fonction `cpmNormalization` pour avoir le nombre de reads de chaque gène par million de reads de la librarie:
+```{r}
+CPMnorm_RNAseq_data <- cpmNormalization(RNAseq_data)
+```
+
+- Comme le format de sortie de la fonction n'est pas un data.frame (qui est le format nécessaire pour la suite), nous devons changer le format avec la fontion suivante:  
+```{r}
+CPMnorm_RNAseq_data <- as.data.frame.matrix(CPMnorm_RNAseq_data)
+
+```
+
+```{r, echo=FALSE}
+head(CPMnorm_RNAseq_data)
+```
+
+Nous avons maintenant un tableau avec les niveaux d'expression normalisés par la taille de la librarie pour chaque gène.
+
+
+# ACP pour s'assurer que les réplicats sont suffisamment similaires
+
+Une des premières vérifications biologique que nous faisons sur nos données est de s'assurer que les 3 réplicats pour chaque génotype et condition sont suffisamment similaire. Pour cela nous utilisons une méthode de visualisation: **l'Analyse en Composante Principale (ACP)**. Avant d'aller plus loin, si vous ne connaissez pas le principe de l'ACP, je vous recommande de regarder cette [courte vidéo d'introduction à l'ACP](https://www.youtube.com/watch?v=y5hzRYZxd4Y&ab_channel=EpiMedOpenCourse).  
+
+
+- Tout d'abord nous enlevons les gènes non exprimés dans 5 échantillons ou plus (avec une valeur de 0 dans 5 échantillons ou plus): 
+```{r}
+CPMnorm_RNAseq_data_expressed <-  filter( CPMnorm_RNAseq_data,
+                                          rowSums(CPMnorm_RNAseq_data[1:12]==0)<5)
+
+```
+
+
+
+> En suivant la même logique, enlevez aussi les gènes faiblement exprimés (avec une moyenne d'expression inférieure à 2). Dans ce cas, utilisez `rowMeans` à la place de `rowSums`.
+
+```{r, echo=FALSE}
+CPMnorm_RNAseq_data_expressed <-  filter(CPMnorm_RNAseq_data, 
+                                         rowMeans(CPMnorm_RNAseq_data[,1:12])>=2 &
+                            rowSums(CPMnorm_RNAseq_data[1:12]==0)<5)
+
+```
+
+
+- Nous pouvons maintenant effectuer l'ACP (notez que nous utilisons les options `scale. = TRUE` et  `center = TRUE` afin d'avoir des données réduites (écart type de 1) et centrées autour de zéro). Pour cela nous utilisons la fonction suivante:
+```{r}
+pca_res_CPMnorm_RNAseq_data_expressed <- prcomp(t(CPMnorm_RNAseq_data_expressed),
+                                                scale. = TRUE, center = TRUE) 
+```
+Nous faisons l'ACP sur les données transformées `t()` avec les gènes en colonne et les échantillons en ligne, car nous souhaitons analyser les échantillons à l'aide de l'information donnée par les gènes. Nous aurions gardé les données telle quelle si nous avions voulu représenter les gènes analysés en fonction de l'information des échantillons (ce que je ne recommande pas car dans ce cas nous avons trop peu de variables explicatives (12 échantillons) par rapport au nombre de gènes (autour de 20000 gènes)).
+
+
+
+- L'étape suivante consiste à regarder le pourcentage de la variance expliqué par chaque dimension de l'ACP:
+
+```{r}
+
+fviz_eig(pca_res_CPMnorm_RNAseq_data_expressed)
+```
+Nous voyons que les deux première dimensions de l'ACP expliquent environ 50% de la variance. Dans le graphique suivant, quand nous présenterons les données en fonction de ces deux premières dimensions (ce qui est généralement fait), gardons en tête que 50% de la variance reste non représentée.
+
+- Faisons maintenant le graphique de l'ACP:
+```{r}
+
+fviz_pca_ind(pca_res_CPMnorm_RNAseq_data_expressed, pointsize=3)
+
+```
+
+Il est difficile de comprendre cette ACP car le texte n'est pas très lisible.
+
+- Afin de faciliter l'interprétation de l'ACP, ajoutons un code couleur pour les échantillons:
+```{r, message=FALSE}
+# chargement d'un tableau expliquant à quel génotype et quelle 
+# condition environnementale correspond chaque échantillon
+
+data_info <- read_tsv("../../../data/Data_info.txt")
+
+
+# Maintenant refaisons l'ACP avec le code couleur en utilisant 
+# les paramères suivants:
+# col.ind=data_info$genotype_KNO3 pour ajouter le code couleur
+# repel=TRUE pour faire un sorte que le texte soit lisible 
+# invisible="quali" pour enlever la moyenne de chaque groupe
+
+fviz_pca_ind(pca_res_CPMnorm_RNAseq_data_expressed, 
+             pointsize=3, col.ind=data_info$genotype_KNO3,  
+             repel=TRUE, invisible="quali") 
+```
+
+> Que concluez vous de cette ACP?  
+> Est-ce que les réplicats sont suffisamment similaires?  
+> A quoi correspond la dimension 1?  
+> A quoi correspond la dimension 2?  
+
+
+
+
+
+# Etude de l'expression de quelques gènes pour lesquels nous avons des résultats préliminaires 
+
+L'analyse par ACP semble encourageante. Cependant pour aller plus loin dans la vérification des données biologique, nous pouvons aussi vérifier que l'expression de certains gènes se comporte commme attendu dans les données de RNA-seq.
+
+Les gènes pour lesquels nous savons quelle doit être l'expression dans les échantillons sont:  
+- *ARP6* (AT3G33520)  
+- *NRT2.1* (transporteur de nitrate, AT1G08090)  
+
+> Pour faire le graphique pour chaque gène, suivez les étapes ci-dessous:  
+> - Passer le nom des lignes en une colonne "gene" à l'aide de la fonction `rownames_to_column`  
+> - Ne garder que la ligne pour notre gène d'intérêt en utilisant la fonction `filter`  
+> - Transformer le format de manière à avoir une colonne avec le nom de l'échantillon et une colonne avec les valeurs d'expression plutôt qu'une colonne par échantillon en utilisant `pivot_longer`  
+> - Séparez la colonne des échantillons de manière à avoir 3 nouvelle colonnes: une pour le génotype, une pour la condition en nitrate et une pour le réplicat. Pour cela utilisez la fonction `separate`  
+> - Utilisez `ggplot` pour faire un graphique avec l'expression du gène en fonction du génotype et les points colorés en fonction de la condition en nitrate  
+
+
+*Graphiqe attendu pour ARP6*
+```{r, echo=FALSE}
+# ARP6
+rownames_to_column(CPMnorm_RNAseq_data_expressed, var="gene") %>% 
+  filter(gene=="AT3G33520") %>% 
+  pivot_longer(arp6_0.5mM_rep1:WT_0.5mM_rep3, names_to = "sample", values_to = "expression") %>% 
+  separate(sample, into=c("genotype", "KNO3", "replicate"), sep="_") %>% 
+  ggplot(aes(x=genotype, y=expression, col=KNO3)) +
+  geom_point() +
+  ggtitle(expression(italic("ARP6")))
+
+```
+
+
+
+
+
+
