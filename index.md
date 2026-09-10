@@ -90,9 +90,9 @@ En groupe de 2 ou 3 préparez une présentation de 5 à 10 minutes dans laquelle
 
 - Des expériences futures que vous feriez pour étudier ce ou ces gènes plus en détail, notamment en faisant appel aux primers que vous avez dessinés.    
 
-Vous serez aussi noté sur votre capacité à poser les questions pertinentes lors de la présentation des autres groupes. 
+Vous serez aussi noté sur votre capacité à poser des questions pertinentes lors de la présentation des autres groupes. 
 
-**Date de l'évaluation: Jeudi 29 octobre 13h15 - 14h45**
+#### **Date de l'évaluation: Jeudi 29 octobre 13h15 - 14h45**
 
 <br>
 
